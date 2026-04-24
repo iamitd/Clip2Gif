@@ -1,0 +1,465 @@
+:root {
+  color: #f4f7fb;
+  background: #10131a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(117, 92, 255, 0.28), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(0, 214, 201, 0.24), transparent 28rem),
+    #10131a;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.7fr);
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.compact-workspace {
+  display: block;
+  max-width: 860px;
+}
+
+.preview-card,
+.controls-card,
+.gif-modal {
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(18, 23, 33, 0.82);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(18px);
+}
+
+.compact-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.compact-title span {
+  color: #8de7dc;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.video-frame {
+  display: grid;
+  min-height: 260px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #06080d;
+  place-items: center;
+}
+
+video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+}
+
+.empty-preview {
+  padding: 28px;
+  color: #798598;
+  text-align: center;
+}
+
+.secondary-button,
+.primary-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.secondary-button {
+  color: #f4f7fb;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.primary-button {
+  color: #081014;
+  background: linear-gradient(135deg, #8de7dc, #c8ff5f);
+}
+
+.main-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.selected-file,
+.status-box,
+.result-box {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: #aeb8c7;
+}
+
+.selected-file strong,
+.status-box p,
+.result-box p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #f4f7fb;
+}
+
+.controls-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #c7d0de;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #f4f7fb;
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+input:focus {
+  border-color: #8de7dc;
+}
+
+.status-box,
+.result-box,
+.error-box {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.error-box {
+  color: #ffccd1;
+  background: rgba(255, 70, 96, 0.16);
+}
+
+.video-controls {
+  display: grid;
+  grid-template-columns: auto auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.transport-button {
+  min-width: 58px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  color: #081014;
+  background: #8de7dc;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.time-readout {
+  color: #f4f7fb;
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.timeline {
+  position: relative;
+  height: 34px;
+  min-width: 140px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.timeline-track {
+  position: absolute;
+  top: 14px;
+  right: 0;
+  left: 0;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 99px;
+  background:
+    repeating-linear-gradient(90deg, rgba(141, 231, 220, 0.32) 0 7px, rgba(141, 231, 220, 0.08) 7px 10px),
+    #142331;
+}
+
+.timeline-progress {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(141, 231, 220, 0.35);
+  pointer-events: none;
+}
+
+.clip-selection {
+  position: absolute;
+  top: 10px;
+  height: 15px;
+  border-top: 1px solid rgba(255, 221, 91, 0.95);
+  border-bottom: 1px solid rgba(255, 221, 91, 0.95);
+  background: rgba(255, 221, 91, 0.32);
+  pointer-events: none;
+}
+
+.range-handle {
+  position: absolute;
+  top: 2px;
+  width: 18px;
+  height: 30px;
+  margin-left: -9px;
+  border-radius: 8px;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.range-handle::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 2px;
+  background: repeating-linear-gradient(180deg, #ffdd5b 0 4px, transparent 4px 7px);
+  content: "";
+}
+
+.range-handle::after {
+  position: absolute;
+  top: -4px;
+  left: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #ffdd5b;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.range-handle:focus-visible {
+  outline: 2px solid #8de7dc;
+  outline-offset: 2px;
+}
+
+.clip-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clip-actions button {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  border-left: 1px dashed rgba(255, 221, 91, 0.65);
+  border-radius: 9px;
+  color: #ffdd5b;
+  background: rgba(255, 221, 91, 0.08);
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+  place-items: center;
+}
+
+.clip-actions button:disabled {
+  opacity: 0.45;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  padding: 28px;
+  background: rgba(3, 6, 12, 0.72);
+  backdrop-filter: blur(14px);
+  place-items: center;
+  z-index: 10;
+}
+
+.gif-modal {
+  display: grid;
+  gap: 16px;
+  width: min(92vw, 820px);
+  max-height: 92vh;
+}
+
+.modal-title,
+.modal-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.modal-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-title p {
+  margin: 6px 0 0;
+  color: #aeb8c7;
+}
+
+.modal-close {
+  padding: 10px 13px;
+  border-radius: 12px;
+  color: #f4f7fb;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 800;
+}
+
+.gif-preview-stage {
+  display: grid;
+  min-height: 280px;
+  max-height: 54vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: #06080d;
+  place-items: center;
+}
+
+.gif-resize-frame {
+  position: relative;
+  min-width: 80px;
+  min-height: 80px;
+  max-width: 1920px;
+  max-height: 1920px;
+  border: 1px solid rgba(255, 221, 91, 0.78);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gif-resize-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px 0 0 0;
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(255, 221, 91, 0.95) 50% 55%, transparent 57%),
+    linear-gradient(135deg, transparent 0 64%, rgba(255, 221, 91, 0.75) 66% 71%, transparent 73%),
+    rgba(255, 221, 91, 0.12);
+  cursor: nwse-resize;
+}
+
+.resize-handle:focus-visible {
+  outline: 2px solid #8de7dc;
+  outline-offset: -2px;
+}
+
+.modal-controls {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+.modal-controls .primary-button {
+  margin-top: 0;
+  min-width: 140px;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .video-frame {
+    min-height: 220px;
+  }
+
+  .compact-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .compact-title span {
+    text-align: left;
+  }
+
+  .video-controls {
+    grid-template-columns: auto auto;
+  }
+
+  .timeline,
+  .clip-actions {
+    grid-column: 1 / -1;
+  }
+
+  .main-actions,
+  .modal-title,
+  .modal-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-backdrop {
+    padding: 12px;
+  }
+}
