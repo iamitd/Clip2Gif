@@ -4,18 +4,18 @@
 
 Project name: Clip2Gif
 
-Purpose: Windows desktop application for creating GIF files from short video clips.
+Purpose: Web application for creating GIF files from short video clips in the browser.
 
 ## Tech Stack
 
-Status: Planned and initialized for MVP.
+Status: Converted from desktop MVP to web MVP planned for Vercel hosting.
 
 - Frontend: React + TypeScript
-- Backend: Rust via Tauri commands
-- Desktop/runtime: Tauri, Windows only
+- Backend: None for MVP; conversion runs in the browser via FFmpeg WebAssembly
+- Desktop/runtime: Web browser; target hosting is Vercel
 - Database: None
-- Build tools: Vite, Cargo, Tauri CLI
-- Testing: TypeScript build checks; manual desktop export validation for MVP
+- Build tools: Vite
+- Testing: TypeScript build checks; manual browser GIF export validation for MVP
 - Package manager: npm
 
 ## Key Commands
@@ -23,9 +23,9 @@ Status: Planned and initialized for MVP.
 Use these commands from the project root.
 
 - Install dependencies: `npm install`
-- Start development: `npm run tauri dev`
+- Start development: `npm run dev`
 - Build frontend: `npm run build`
-- Build desktop app: `npm run tauri build`
+- Preview production build: `npm run preview`
 - Test: TBD
 - Lint: TBD
 - Format: TBD
@@ -41,8 +41,8 @@ If a command is unknown, inspect project files before guessing.
 - Avoid backward-compatibility code unless there is a concrete need.
 - Use clear names and avoid unnecessary abstractions.
 - Add comments only when code is not self-explanatory.
-- Keep the MVP Windows-only unless the project requirements change.
-- Use FFmpeg as an external CLI dependency for development; do not bundle `ffmpeg.exe` until a release packaging milestone requires it.
+- Keep video processing local to the user's browser unless project requirements change.
+- Do not add a server upload/conversion backend unless explicitly requested.
 
 ## Self-Check Instructions
 
@@ -58,8 +58,8 @@ For this MVP, minimum validation is:
 
 - `npm install`
 - `npm run build`
-- `npm run tauri dev` when Rust/Cargo are available
-- Manual export of a short video to GIF when FFmpeg is available in `PATH`
+- `npm run dev`
+- Manual export/download of a short video to GIF in a browser
 
 ## Planning Rules
 
@@ -72,18 +72,26 @@ Global standard:
 
 ## Decisions
 
-- Decision: Build the MVP with Tauri, React, TypeScript, and Rust.
+- Decision: Build the original MVP with Tauri, React, TypeScript, and Rust. Superseded by the web-app decision below.
   Rationale: Tauri provides a lightweight Windows desktop shell, React/TypeScript keeps UI implementation fast, and Rust backend can safely invoke FFmpeg.
   Date/Author: 2026-04-24 / agent
 
-- Decision: Require FFmpeg to be installed in `PATH` for development.
+- Decision: Require FFmpeg to be installed in `PATH` for desktop development. Superseded by browser FFmpeg WebAssembly.
   Rationale: Bundling `ffmpeg.exe` is deferred until release packaging; MVP only needs a clear error when FFmpeg is unavailable.
   Date/Author: 2026-04-24 / agent
 
-- Decision: Save generated GIFs next to the source video.
+- Decision: Save generated GIFs next to the source video for desktop MVP. Superseded by browser download for the web MVP.
   Rationale: This keeps the MVP UI minimal and avoids an extra save dialog flow.
   Date/Author: 2026-04-24 / user
 
 - Decision: Use a single-step FFmpeg command for MVP quality.
   Rationale: `fps,scale` is enough for the first working product; `palettegen/paletteuse` can be added later.
   Date/Author: 2026-04-24 / agent
+
+- Decision: Convert Clip2Gif from desktop to a web app for Vercel.
+  Rationale: The project direction changed from a Windows desktop app to a hosted website.
+  Date/Author: 2026-04-26 / user
+
+- Decision: Run video-to-GIF conversion in the browser with FFmpeg WebAssembly.
+  Rationale: This avoids uploading user videos to a server and fits static Vercel hosting better than server-side FFmpeg functions.
+  Date/Author: 2026-04-26 / user

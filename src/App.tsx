@@ -1,62 +1,55 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { useRef, useState } from "react";
-import type { MouseEvent, PointerEvent, SyntheticEvent } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent, MouseEvent, PointerEvent, SyntheticEvent } from "react";
 
-type PreviewSettings = {
-  inputPath: string;
-  startTime: number;
-  duration: number;
-  outputWidth: number;
-  outputHeight: number;
-};
-
-type SaveSettings = PreviewSettings;
-
-type PreviewResult = {
-  previewPath: string;
-};
-
-type ExportResult = {
-  outputPath: string;
-};
-
-const videoExtensions = ["mp4", "webm", "mov", "mkv", "avi"];
-const isTauri = "__TAURI_INTERNALS__" in window;
 const defaultClipDuration = 3;
 const minClipDuration = 0.2;
 const minOutputSize = 80;
 const maxOutputSize = 1920;
 const defaultOutputWidth = 480;
+const gifFps = 15;
+const ffmpegCoreBaseUrl = "/ffmpeg";
 
 function App() {
-  const [selectedPath, setSelectedPath] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [videoSrc, setVideoSrc] = useState("");
   const [videoDuration, setVideoDuration] = useState(0);
   const [clipStart, setClipStart] = useState(0);
   const [clipEnd, setClipEnd] = useState(defaultClipDuration);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [status, setStatus] = useState("Choose a video to begin.");
-  const [outputPath, setOutputPath] = useState("");
   const [error, setError] = useState("");
   const [isCreatingPreview, setIsCreatingPreview] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [previewGifPath, setPreviewGifPath] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [gifPreviewUrl, setGifPreviewUrl] = useState("");
   const [gifWidth, setGifWidth] = useState(defaultOutputWidth);
   const [gifHeight, setGifHeight] = useState(270);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
 
-  const selectedFileName = selectedPath ? selectedPath.split(/[\\/]/).pop() : "No file selected";
-  const previewSrc = selectedPath ? convertFileSrc(selectedPath) : "";
-  const previewGifSrc = previewGifPath ? convertFileSrc(previewGifPath) : "";
+  const selectedFileName = selectedFile?.name ?? "No file selected";
   const safeDuration = videoDuration > 0 ? videoDuration : defaultClipDuration;
   const clipDuration = Math.max(0, clipEnd - clipStart);
   const clipStartPercent = (clipStart / safeDuration) * 100;
   const clipEndPercent = (clipEnd / safeDuration) * 100;
   const progressPercent = (currentTime / safeDuration) * 100;
-  const isBusy = isCreatingPreview || isSaving;
+  const isBusy = isCreatingPreview || isDownloading;
+
+  useEffect(() => {
+    return () => {
+      if (videoSrc) {
+        URL.revokeObjectURL(videoSrc);
+      }
+      if (gifPreviewUrl) {
+        URL.revokeObjectURL(gifPreviewUrl);
+      }
+    };
+  }, [gifPreviewUrl, videoSrc]);
 
   function formatTime(seconds: number) {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -70,6 +63,10 @@ function App() {
   }
 
   function clampOutputSize(value: number) {
+    if (!Number.isFinite(value)) {
+      return minOutputSize;
+    }
+
     return Math.min(maxOutputSize, Math.max(minOutputSize, Math.round(value)));
   }
 
@@ -249,8 +246,39 @@ function App() {
     seekVideo(nextEnd);
   }
 
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (videoSrc) {
+      URL.revokeObjectURL(videoSrc);
+    }
+    if (gifPreviewUrl) {
+      URL.revokeObjectURL(gifPreviewUrl);
+    }
+
+    setSelectedFile(file);
+    setVideoSrc(URL.createObjectURL(file));
+    setGifPreviewUrl("");
+    setIsPreviewOpen(false);
+    setOutputState("Video selected. Choose a clip and create a GIF preview.", "");
+    setVideoDuration(0);
+    setClipStart(0);
+    setClipEnd(defaultClipDuration);
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setDefaultGifSize(16, 9);
+  }
+
+  function setOutputState(nextStatus: string, nextError: string) {
+    setStatus(nextStatus);
+    setError(nextError);
+  }
+
   function validateExportSettings() {
-    if (!selectedPath) {
+    if (!selectedFile) {
       return "Select a video file first.";
     }
 
@@ -273,60 +301,60 @@ function App() {
     return "";
   }
 
-  function currentSettings(): PreviewSettings {
-    return {
-      inputPath: selectedPath,
-      startTime: clipStart,
-      duration: clipDuration,
-      outputWidth: gifWidth,
-      outputHeight: gifHeight,
-    };
+  async function loadFFmpeg() {
+    if (ffmpegRef.current?.loaded) {
+      return ffmpegRef.current;
+    }
+
+    const ffmpeg = new FFmpeg();
+    ffmpeg.on("log", ({ message }) => {
+      if (message.includes("time=")) {
+        setStatus("Converting video to GIF...");
+      }
+    });
+
+    setStatus("Loading FFmpeg WebAssembly...");
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+
+    ffmpegRef.current = ffmpeg;
+    return ffmpeg;
   }
 
-  async function selectVideo() {
-    setError("");
-    setOutputPath("");
-    setPreviewGifPath("");
-    setIsPreviewOpen(false);
-    setStatus("Opening file picker...");
-
-    if (!isTauri) {
-      setStatus("Desktop runtime is not available.");
-      setError("Select Video works only in the Tauri desktop app. Start it with `npm run tauri dev`, not `npm run dev` or a browser tab.");
-      return;
+  async function renderGif(width: number, height: number) {
+    if (!selectedFile) {
+      throw new Error("Select a video file first.");
     }
 
-    let picked: string | null | string[];
-    try {
-      picked = await open({
-        multiple: false,
-        directory: false,
-        filters: [{ name: "Video", extensions: videoExtensions }],
-      });
-    } catch (err) {
-      setStatus("File picker failed.");
-      setError(err instanceof Error ? err.message : String(err));
-      return;
-    }
+    const ffmpeg = await loadFFmpeg();
+    const extension = selectedFile.name.split(".").pop() || "mp4";
+    const inputName = `input-${Date.now()}.${extension}`;
+    const outputName = `clip2gif-${Date.now()}.gif`;
 
-    if (typeof picked !== "string") {
-      setStatus("Video selection cancelled.");
-      return;
-    }
+    await ffmpeg.writeFile(inputName, await fetchFile(selectedFile));
+    await ffmpeg.exec([
+      "-ss",
+      clipStart.toString(),
+      "-t",
+      clipDuration.toString(),
+      "-i",
+      inputName,
+      "-vf",
+      `fps=${gifFps},scale=${width}:${height}:flags=lanczos`,
+      outputName,
+    ]);
 
-    setSelectedPath(picked);
-    setVideoDuration(0);
-    setClipStart(0);
-    setClipEnd(defaultClipDuration);
-    setCurrentTime(0);
-    setIsPlaying(false);
-    setDefaultGifSize(16, 9);
-    setStatus("Video selected. Choose a clip and create a GIF preview.");
+    const data = await ffmpeg.readFile(outputName);
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+
+    return new Blob([data as BlobPart], { type: "image/gif" });
   }
 
   async function createGifPreview() {
     setError("");
-    setOutputPath("");
 
     const validationError = validateExportSettings();
     if (validationError) {
@@ -335,13 +363,16 @@ function App() {
     }
 
     setIsCreatingPreview(true);
-    setStatus("Creating GIF preview with FFmpeg...");
+    setStatus("Creating GIF preview in your browser...");
 
     try {
-      const result = await invoke<PreviewResult>("create_gif_preview", { settings: currentSettings() });
-      setPreviewGifPath(result.previewPath);
+      const blob = await renderGif(gifWidth, gifHeight);
+      if (gifPreviewUrl) {
+        URL.revokeObjectURL(gifPreviewUrl);
+      }
+      setGifPreviewUrl(URL.createObjectURL(blob));
       setIsPreviewOpen(true);
-      setStatus("GIF preview created. Adjust size and save it.");
+      setStatus("GIF preview created. Adjust size and download it.");
     } catch (err) {
       setStatus("Preview failed.");
       setError(err instanceof Error ? err.message : String(err));
@@ -350,7 +381,7 @@ function App() {
     }
   }
 
-  async function saveGif() {
+  async function downloadGif() {
     setError("");
 
     const validationError = validateExportSettings();
@@ -359,19 +390,26 @@ function App() {
       return;
     }
 
-    setIsSaving(true);
-    setStatus("Saving final GIF with FFmpeg...");
+    setIsDownloading(true);
+    setStatus("Preparing GIF download...");
 
     try {
-      const result = await invoke<ExportResult>("save_gif", { settings: currentSettings() });
-      setOutputPath(result.outputPath);
-      setIsPreviewOpen(false);
-      setStatus("GIF saved successfully.");
+      const blob = await renderGif(gifWidth, gifHeight);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const baseName = selectedFile?.name.replace(/\.[^.]+$/, "") || "clip2gif";
+      link.href = url;
+      link.download = `${baseName}.gif`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus("GIF download started.");
     } catch (err) {
-      setStatus("Save failed.");
+      setStatus("Download failed.");
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsSaving(false);
+      setIsDownloading(false);
     }
   }
 
@@ -385,10 +423,10 @@ function App() {
           </div>
 
           <div className="video-frame">
-            {previewSrc ? (
+            {videoSrc ? (
               <video
                 ref={videoRef}
-                src={previewSrc}
+                src={videoSrc}
                 preload="metadata"
                 onLoadedMetadata={handleMetadataLoaded}
                 onTimeUpdate={handleTimeUpdate}
@@ -401,7 +439,7 @@ function App() {
           </div>
 
           <div className="video-controls">
-            <button className="transport-button" type="button" onClick={togglePlayback} disabled={!selectedPath} aria-label={isPlaying ? "Pause" : "Play"}>
+            <button className="transport-button" type="button" onClick={togglePlayback} disabled={!selectedFile} aria-label={isPlaying ? "Pause" : "Play"}>
               {isPlaying ? "Pause" : "Play"}
             </button>
             <span className="time-readout">
@@ -417,7 +455,7 @@ function App() {
                 style={{ left: `${clipStartPercent}%` }}
                 onPointerDown={(event) => beginHandleDrag("start", event)}
                 aria-label="Move clip start"
-                disabled={!selectedPath || isBusy}
+                disabled={!selectedFile || isBusy}
               />
               <button
                 className="range-handle end-handle"
@@ -425,47 +463,47 @@ function App() {
                 style={{ left: `${clipEndPercent}%` }}
                 onPointerDown={(event) => beginHandleDrag("end", event)}
                 aria-label="Move clip end"
-                disabled={!selectedPath || isBusy}
+                disabled={!selectedFile || isBusy}
               />
             </div>
             <div className="clip-actions" aria-label="Clip actions">
-              <button type="button" onClick={playFromClipStart} disabled={!selectedPath} title="Play from clip start" aria-label="Play from clip start">
+              <button type="button" onClick={playFromClipStart} disabled={!selectedFile} title="Play from clip start" aria-label="Play from clip start">
                 ↺
               </button>
-              <button type="button" onClick={setStartAtCurrentTime} disabled={!selectedPath} title="Set start to current time" aria-label="Set start to current time">
+              <button type="button" onClick={setStartAtCurrentTime} disabled={!selectedFile} title="Set start to current time" aria-label="Set start to current time">
                 [
               </button>
-              <button type="button" onClick={setEndAtCurrentTime} disabled={!selectedPath} title="Set end to current time" aria-label="Set end to current time">
+              <button type="button" onClick={setEndAtCurrentTime} disabled={!selectedFile} title="Set end to current time" aria-label="Set end to current time">
                 ]
               </button>
             </div>
           </div>
 
           <div className="main-actions">
-            <button className="secondary-button" type="button" onClick={selectVideo} disabled={isBusy}>
+            <input
+              ref={fileInputRef}
+              className="file-input"
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,.mp4,.webm,.mov,.mkv,.avi"
+              onChange={handleFileChange}
+            />
+            <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
               Select Video
             </button>
-            <button className="primary-button" type="button" onClick={createGifPreview} disabled={isBusy || !selectedPath}>
+            <button className="primary-button" type="button" onClick={createGifPreview} disabled={isBusy || !selectedFile}>
               {isCreatingPreview ? "Creating..." : "Create GIF"}
             </button>
           </div>
 
           <div className="selected-file">
             <span>Selected file</span>
-            <strong title={selectedPath}>{selectedFileName}</strong>
+            <strong title={selectedFileName}>{selectedFileName}</strong>
           </div>
 
           <div className="status-box">
             <span>Status</span>
             <p>{status}</p>
           </div>
-
-          {outputPath ? (
-            <div className="result-box">
-              <span>Output path</span>
-              <p>{outputPath}</p>
-            </div>
-          ) : null}
 
           {error ? <div className="error-box">{error}</div> : null}
         </div>
@@ -477,17 +515,17 @@ function App() {
             <div className="modal-title">
               <div>
                 <h2>GIF Preview</h2>
-                <p>Resize the GIF, then save the final file.</p>
+                <p>Resize the GIF, then download the final file.</p>
               </div>
-              <button type="button" className="modal-close" onClick={() => setIsPreviewOpen(false)} disabled={isSaving} aria-label="Close preview">
+              <button type="button" className="modal-close" onClick={() => setIsPreviewOpen(false)} disabled={isDownloading} aria-label="Close preview">
                 Close
               </button>
             </div>
 
             <div className="gif-preview-stage">
-              {previewGifSrc ? (
+              {gifPreviewUrl ? (
                 <div className="gif-resize-frame" style={{ width: gifWidth, height: gifHeight }}>
-                  <img src={previewGifSrc} alt="Generated GIF preview" />
+                  <img src={gifPreviewUrl} alt="Generated GIF preview" />
                   <button type="button" className="resize-handle" onPointerDown={beginGifResize} aria-label="Resize GIF preview" />
                 </div>
               ) : null}
@@ -502,8 +540,8 @@ function App() {
                 <span>Height</span>
                 <input min={minOutputSize} max={maxOutputSize} step="1" type="number" value={gifHeight} onChange={(event) => setGifHeight(clampOutputSize(Number(event.target.value)))} />
               </label>
-              <button className="primary-button" type="button" onClick={saveGif} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save GIF"}
+              <button className="primary-button" type="button" onClick={downloadGif} disabled={isDownloading}>
+                {isDownloading ? "Preparing..." : "Download GIF"}
               </button>
             </div>
           </section>
