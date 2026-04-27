@@ -15,7 +15,7 @@ Status: Converted from desktop MVP to web MVP planned for Vercel hosting.
 - Desktop/runtime: Web browser; target hosting is Vercel
 - Database: None
 - Build tools: Vite
-- Testing: TypeScript build checks; manual browser GIF export validation for MVP
+- Testing: Vitest unit tests for export validation; TypeScript build checks; manual browser GIF export validation for MVP
 - Package manager: npm
 
 ## Key Commands
@@ -24,11 +24,12 @@ Use these commands from the project root.
 
 - Install dependencies: `npm install`
 - Start development: `npm run dev`
+- Test: `npm test`
+- Typecheck: `npm run typecheck`
 - Build frontend: `npm run build`
 - Preview production build: `npm run preview`
-- Test: TBD
-- Lint: TBD
-- Format: TBD
+- Lint: no lint command yet
+- Format: no format command yet
 
 If a command is unknown, inspect project files before guessing.
 
@@ -43,6 +44,8 @@ If a command is unknown, inspect project files before guessing.
 - Add comments only when code is not self-explanatory.
 - Keep video processing local to the user's browser unless project requirements change.
 - Do not add a server upload/conversion backend unless explicitly requested.
+- Keep browser conversion bounded: enforce limits for input file size, clip duration, and output dimensions/pixels before running FFmpeg WebAssembly.
+- FFmpeg core assets live in `public/ffmpeg/`. `ffmpeg-core.js` must be the ESM build from `@ffmpeg/core/dist/esm`; the UMD build fails in Vite's module worker path.
 
 ## Self-Check Instructions
 
@@ -57,6 +60,8 @@ Before considering work complete:
 For this MVP, minimum validation is:
 
 - `npm install`
+- `npm test`
+- `npm run typecheck`
 - `npm run build`
 - `npm run dev`
 - Manual export/download of a short video to GIF in a browser

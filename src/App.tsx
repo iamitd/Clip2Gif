@@ -1,15 +1,11 @@
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent, PointerEvent, SyntheticEvent } from "react";
+import { renderGif } from "./ffmpegGif";
+import { gifDownloadName, maxOutputSize, minOutputSize, validateExportSettings, validateVideoFile } from "./exportValidation";
 
 const defaultClipDuration = 3;
 const minClipDuration = 0.2;
-const minOutputSize = 80;
-const maxOutputSize = 1920;
 const defaultOutputWidth = 480;
-const gifFps = 15;
-const ffmpegCoreBaseUrl = "/ffmpeg";
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -25,12 +21,13 @@ function App() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [gifPreviewUrl, setGifPreviewUrl] = useState("");
+  const [gifPreviewBlob, setGifPreviewBlob] = useState<Blob | null>(null);
+  const [gifPreviewKey, setGifPreviewKey] = useState("");
   const [gifWidth, setGifWidth] = useState(defaultOutputWidth);
   const [gifHeight, setGifHeight] = useState(270);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const ffmpegRef = useRef<FFmpeg | null>(null);
 
   const selectedFileName = selectedFile?.name ?? "No file selected";
   const safeDuration = videoDuration > 0 ? videoDuration : defaultClipDuration;
@@ -45,11 +42,16 @@ function App() {
       if (videoSrc) {
         URL.revokeObjectURL(videoSrc);
       }
+    };
+  }, [videoSrc]);
+
+  useEffect(() => {
+    return () => {
       if (gifPreviewUrl) {
         URL.revokeObjectURL(gifPreviewUrl);
       }
     };
-  }, [gifPreviewUrl, videoSrc]);
+  }, [gifPreviewUrl]);
 
   function formatTime(seconds: number) {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -80,6 +82,58 @@ function App() {
     const ratio = videoHeight / videoWidth;
     setGifWidth(defaultOutputWidth);
     setGifHeight(clampOutputSize(defaultOutputWidth * ratio));
+  }
+
+  function currentPreviewKey(width = gifWidth, height = gifHeight) {
+    if (!selectedFile) {
+      return "";
+    }
+
+    return JSON.stringify({
+      name: selectedFile.name,
+      size: selectedFile.size,
+      modified: selectedFile.lastModified,
+      start: clipStart,
+      duration: clipDuration,
+      width,
+      height,
+    });
+  }
+
+  function resetGifPreview() {
+    if (gifPreviewUrl) {
+      URL.revokeObjectURL(gifPreviewUrl);
+    }
+    setGifPreviewUrl("");
+    setGifPreviewBlob(null);
+    setGifPreviewKey("");
+    setIsPreviewOpen(false);
+  }
+
+  function clearSelectedFile() {
+    if (videoSrc) {
+      URL.revokeObjectURL(videoSrc);
+    }
+
+    resetGifPreview();
+    setSelectedFile(null);
+    setVideoSrc("");
+    setVideoDuration(0);
+    setClipStart(0);
+    setClipEnd(defaultClipDuration);
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setDefaultGifSize(16, 9);
+  }
+
+  function setGifPreview(blob: Blob, key: string) {
+    if (gifPreviewUrl) {
+      URL.revokeObjectURL(gifPreviewUrl);
+    }
+
+    setGifPreviewBlob(blob);
+    setGifPreviewKey(key);
+    setGifPreviewUrl(URL.createObjectURL(blob));
   }
 
   function beginGifResize(event: PointerEvent<HTMLButtonElement>) {
@@ -252,17 +306,21 @@ function App() {
       return;
     }
 
+    const fileError = validateVideoFile(file);
+    if (fileError) {
+      clearSelectedFile();
+      setOutputState("Video selection failed.", fileError);
+      event.target.value = "";
+      return;
+    }
+
     if (videoSrc) {
       URL.revokeObjectURL(videoSrc);
     }
-    if (gifPreviewUrl) {
-      URL.revokeObjectURL(gifPreviewUrl);
-    }
+    resetGifPreview();
 
     setSelectedFile(file);
     setVideoSrc(URL.createObjectURL(file));
-    setGifPreviewUrl("");
-    setIsPreviewOpen(false);
     setOutputState("Video selected. Choose a clip and create a GIF preview.", "");
     setVideoDuration(0);
     setClipStart(0);
@@ -277,86 +335,18 @@ function App() {
     setError(nextError);
   }
 
-  function validateExportSettings() {
-    if (!selectedFile) {
-      return "Select a video file first.";
-    }
-
-    if (!Number.isFinite(clipStart) || clipStart < 0) {
-      return "Clip start must be 0 or greater.";
-    }
-
-    if (!Number.isFinite(clipDuration) || clipDuration <= 0) {
-      return "Clip duration must be greater than 0.";
-    }
-
-    if (!Number.isInteger(gifWidth) || gifWidth < minOutputSize || gifWidth > maxOutputSize) {
-      return `GIF width must be between ${minOutputSize} and ${maxOutputSize}px.`;
-    }
-
-    if (!Number.isInteger(gifHeight) || gifHeight < minOutputSize || gifHeight > maxOutputSize) {
-      return `GIF height must be between ${minOutputSize} and ${maxOutputSize}px.`;
-    }
-
-    return "";
-  }
-
-  async function loadFFmpeg() {
-    if (ffmpegRef.current?.loaded) {
-      return ffmpegRef.current;
-    }
-
-    const ffmpeg = new FFmpeg();
-    ffmpeg.on("log", ({ message }) => {
-      if (message.includes("time=")) {
-        setStatus("Converting video to GIF...");
-      }
-    });
-
-    setStatus("Loading FFmpeg WebAssembly...");
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${ffmpegCoreBaseUrl}/ffmpeg-core.wasm`, "application/wasm"),
-    });
-
-    ffmpegRef.current = ffmpeg;
-    return ffmpeg;
-  }
-
-  async function renderGif(width: number, height: number) {
+  async function createGifBlob(width: number, height: number) {
     if (!selectedFile) {
       throw new Error("Select a video file first.");
     }
 
-    const ffmpeg = await loadFFmpeg();
-    const extension = selectedFile.name.split(".").pop() || "mp4";
-    const inputName = `input-${Date.now()}.${extension}`;
-    const outputName = `clip2gif-${Date.now()}.gif`;
-
-    await ffmpeg.writeFile(inputName, await fetchFile(selectedFile));
-    await ffmpeg.exec([
-      "-ss",
-      clipStart.toString(),
-      "-t",
-      clipDuration.toString(),
-      "-i",
-      inputName,
-      "-vf",
-      `fps=${gifFps},scale=${width}:${height}:flags=lanczos`,
-      outputName,
-    ]);
-
-    const data = await ffmpeg.readFile(outputName);
-    await ffmpeg.deleteFile(inputName);
-    await ffmpeg.deleteFile(outputName);
-
-    return new Blob([data as BlobPart], { type: "image/gif" });
+    return renderGif({ file: selectedFile, clipStart, clipDuration, width, height, onStatus: setStatus });
   }
 
   async function createGifPreview() {
     setError("");
 
-    const validationError = validateExportSettings();
+    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight });
     if (validationError) {
       setError(validationError);
       return;
@@ -366,11 +356,9 @@ function App() {
     setStatus("Creating GIF preview in your browser...");
 
     try {
-      const blob = await renderGif(gifWidth, gifHeight);
-      if (gifPreviewUrl) {
-        URL.revokeObjectURL(gifPreviewUrl);
-      }
-      setGifPreviewUrl(URL.createObjectURL(blob));
+      const previewKey = currentPreviewKey();
+      const blob = await createGifBlob(gifWidth, gifHeight);
+      setGifPreview(blob, previewKey);
       setIsPreviewOpen(true);
       setStatus("GIF preview created. Adjust size and download it.");
     } catch (err) {
@@ -384,7 +372,7 @@ function App() {
   async function downloadGif() {
     setError("");
 
-    const validationError = validateExportSettings();
+    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight });
     if (validationError) {
       setError(validationError);
       return;
@@ -394,12 +382,16 @@ function App() {
     setStatus("Preparing GIF download...");
 
     try {
-      const blob = await renderGif(gifWidth, gifHeight);
+      const previewKey = currentPreviewKey();
+      const blob = gifPreviewBlob && gifPreviewKey === previewKey ? gifPreviewBlob : await createGifBlob(gifWidth, gifHeight);
+      if (blob !== gifPreviewBlob) {
+        setGifPreview(blob, previewKey);
+      }
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      const baseName = selectedFile?.name.replace(/\.[^.]+$/, "") || "clip2gif";
       link.href = url;
-      link.download = `${baseName}.gif`;
+      link.download = gifDownloadName(selectedFile?.name);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -418,7 +410,14 @@ function App() {
       <section className="workspace compact-workspace">
         <div className="preview-card">
           <div className="compact-title">
-            <h1>Clip2Gif</h1>
+            <div className="title-row">
+              <h1>Clip2Gif</h1>
+              <a className="github-link" href="https://github.com/iamitd" target="_blank" rel="noreferrer" aria-label="Open GitHub profile">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.88c-2.78.62-3.37-1.22-3.37-1.22-.45-1.19-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.98c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9v2.8c0 .27.18.59.69.49A10.1 10.1 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+                </svg>
+              </a>
+            </div>
             <span>{clipDuration > 0 ? `${formatTime(clipStart)} - ${formatTime(clipEnd)} (${clipDuration.toFixed(1)}s)` : "Select a clip"}</span>
           </div>
 

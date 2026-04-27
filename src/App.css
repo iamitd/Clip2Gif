@@ -35,7 +35,7 @@ button:disabled {
 
 .app-shell {
   min-height: 100vh;
-  padding: 18px;
+  padding: 24px;
   background:
     radial-gradient(circle at top left, rgba(117, 92, 255, 0.28), transparent 28rem),
     radial-gradient(circle at bottom right, rgba(0, 214, 201, 0.24), transparent 28rem),
@@ -52,13 +52,13 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.7fr);
   gap: 16px;
-  max-width: 900px;
+  max-width: 1120px;
   margin: 0 auto;
 }
 
 .compact-workspace {
   display: block;
-  max-width: 860px;
+  max-width: 1080px;
 }
 
 .preview-card,
@@ -80,6 +80,41 @@ h1 {
   margin-bottom: 14px;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.github-link {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #f4f7fb;
+  background: rgba(255, 255, 255, 0.08);
+  place-items: center;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.github-link:hover,
+.github-link:focus-visible {
+  border-color: rgba(141, 231, 220, 0.72);
+  background: rgba(141, 231, 220, 0.14);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.github-link svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+}
+
 .compact-title span {
   color: #8de7dc;
   font-size: 0.88rem;
@@ -89,7 +124,7 @@ h1 {
 
 .video-frame {
   display: grid;
-  min-height: 260px;
+  min-height: 430px;
   overflow: hidden;
   border-radius: 18px;
   background: #06080d;
@@ -99,7 +134,7 @@ h1 {
 video {
   display: block;
   width: 100%;
-  max-height: 420px;
+  max-height: 68vh;
 }
 
 .empty-preview {
@@ -385,8 +420,8 @@ input:focus {
   position: relative;
   min-width: 80px;
   min-height: 80px;
-  max-width: 1920px;
-  max-height: 1920px;
+  max-width: 1280px;
+  max-height: 1280px;
   border: 1px solid rgba(255, 221, 91, 0.78);
   background: rgba(255, 255, 255, 0.04);
 }
@@ -436,7 +471,7 @@ input:focus {
   }
 
   .video-frame {
-    min-height: 220px;
+    min-height: 260px;
   }
 
   .compact-title {
