@@ -1,11 +1,80 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent, PointerEvent, SyntheticEvent } from "react";
 import { renderGif } from "./ffmpegGif";
-import { gifDownloadName, maxOutputSize, minOutputSize, validateExportSettings, validateVideoFile } from "./exportValidation";
+import { gifDownloadName, maxOutputPixels, maxOutputSize, minOutputSize, validateExportSettings, validateVideoFile } from "./exportValidation";
 
 const defaultClipDuration = 3;
 const minClipDuration = 0.2;
 const defaultOutputWidth = 480;
+const defaultCropRect = { x: 0, y: 0, width: 1, height: 1 };
+const minCropRatio = 0.08;
+
+type CropRect = typeof defaultCropRect;
+type CropDragMode = "move" | "nw" | "ne" | "sw" | "se";
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5.4v13.2L18.8 12 8 5.4Z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z" />
+    </svg>
+  );
+}
+
+function RestartIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.8 6.2A7.1 7.1 0 0 1 19 12a7 7 0 0 1-11.9 5H10v-2H3.7v6.3h2V18.2A9 9 0 1 0 4.1 8.5l1.8.9a7 7 0 0 1 1.9-3.2Z" />
+    </svg>
+  );
+}
+
+function StartMarkerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 4h2v16H6V4Zm4 2.4L18.7 12 10 17.6V6.4Z" />
+    </svg>
+  );
+}
+
+function EndMarkerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M16 4h2v16h-2V4ZM5.3 12 14 6.4v11.2L5.3 12Z" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11 16h2V8.8l2.6 2.6L17 10l-5-5-5 5 1.4 1.4L11 8.8V16Zm-5 3h12v-4h2v6H4v-6h2v4Z" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11 4h2v8.2l2.6-2.6L17 11l-5 5-5-5 1.4-1.4 2.6 2.6V4ZM5 19h14v2H5v-2Z" />
+    </svg>
+  );
+}
+
+function CropIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 2h2v4h10v10h4v2h-4v4h-2v-4H6V8H2V6h4V2Zm2 6v8h8V8H8Z" />
+    </svg>
+  );
+}
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -25,6 +94,9 @@ function App() {
   const [gifPreviewKey, setGifPreviewKey] = useState("");
   const [gifWidth, setGifWidth] = useState(defaultOutputWidth);
   const [gifHeight, setGifHeight] = useState(270);
+  const [videoNaturalWidth, setVideoNaturalWidth] = useState(0);
+  const [videoNaturalHeight, setVideoNaturalHeight] = useState(0);
+  const [cropRect, setCropRect] = useState<CropRect>(defaultCropRect);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -36,6 +108,11 @@ function App() {
   const clipEndPercent = (clipEnd / safeDuration) * 100;
   const progressPercent = (currentTime / safeDuration) * 100;
   const isBusy = isCreatingPreview || isDownloading;
+  const fileSizeLabel = selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB` : "No file";
+  const outputSizeLabel = `${gifWidth} x ${gifHeight}`;
+  const cropWidthPixels = videoNaturalWidth > 0 ? Math.round(cropRect.width * videoNaturalWidth) : 0;
+  const cropHeightPixels = videoNaturalHeight > 0 ? Math.round(cropRect.height * videoNaturalHeight) : 0;
+  const cropSizeLabel = cropWidthPixels > 0 && cropHeightPixels > 0 ? `${cropWidthPixels} x ${cropHeightPixels}` : "Full frame";
 
   useEffect(() => {
     return () => {
@@ -52,6 +129,16 @@ function App() {
       }
     };
   }, [gifPreviewUrl]);
+
+  useEffect(() => {
+    if (videoNaturalWidth <= 0 || videoNaturalHeight <= 0) {
+      return;
+    }
+
+    const nextSize = fitOutputSizeToBounds(cropRect.width * videoNaturalWidth, cropRect.height * videoNaturalHeight);
+    setGifWidth(nextSize.width);
+    setGifHeight(nextSize.height);
+  }, [cropRect, videoNaturalHeight, videoNaturalWidth]);
 
   function formatTime(seconds: number) {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -72,6 +159,17 @@ function App() {
     return Math.min(maxOutputSize, Math.max(minOutputSize, Math.round(value)));
   }
 
+  function fitOutputSizeToBounds(width: number, height: number) {
+    const safeWidth = Math.max(minOutputSize, width);
+    const safeHeight = Math.max(minOutputSize, height);
+    const scale = Math.min(1, maxOutputSize / safeWidth, maxOutputSize / safeHeight, Math.sqrt(maxOutputPixels / (safeWidth * safeHeight)));
+
+    return {
+      width: clampOutputSize(safeWidth * scale),
+      height: clampOutputSize(safeHeight * scale),
+    };
+  }
+
   function setDefaultGifSize(videoWidth: number, videoHeight: number) {
     if (videoWidth <= 0 || videoHeight <= 0) {
       setGifWidth(defaultOutputWidth);
@@ -79,9 +177,9 @@ function App() {
       return;
     }
 
-    const ratio = videoHeight / videoWidth;
-    setGifWidth(defaultOutputWidth);
-    setGifHeight(clampOutputSize(defaultOutputWidth * ratio));
+    const nextSize = fitOutputSizeToBounds(videoWidth, videoHeight);
+    setGifWidth(nextSize.width);
+    setGifHeight(nextSize.height);
   }
 
   function currentPreviewKey(width = gifWidth, height = gifHeight) {
@@ -95,6 +193,7 @@ function App() {
       modified: selectedFile.lastModified,
       start: clipStart,
       duration: clipDuration,
+      crop: cropRect,
       width,
       height,
     });
@@ -124,6 +223,9 @@ function App() {
     setCurrentTime(0);
     setIsPlaying(false);
     setDefaultGifSize(16, 9);
+    setVideoNaturalWidth(0);
+    setVideoNaturalHeight(0);
+    setCropRect(defaultCropRect);
   }
 
   function setGifPreview(blob: Blob, key: string) {
@@ -157,6 +259,86 @@ function App() {
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop, { once: true });
+  }
+
+  function clampCropRect(nextCrop: CropRect) {
+    const width = Math.min(1, Math.max(minCropRatio, nextCrop.width));
+    const height = Math.min(1, Math.max(minCropRatio, nextCrop.height));
+    return {
+      x: Math.min(1 - width, Math.max(0, nextCrop.x)),
+      y: Math.min(1 - height, Math.max(0, nextCrop.y)),
+      width,
+      height,
+    };
+  }
+
+  function beginCropDrag(mode: CropDragMode, event: PointerEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isBusy) {
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    if (!video.paused) {
+      video.pause();
+      setIsPlaying(false);
+    }
+
+    const rect = video.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startCrop = cropRect;
+
+    function applyDrag(clientX: number, clientY: number) {
+      const dx = (clientX - startX) / rect.width;
+      const dy = (clientY - startY) / rect.height;
+
+      if (mode === "move") {
+        setCropRect(clampCropRect({ ...startCrop, x: startCrop.x + dx, y: startCrop.y + dy }));
+        return;
+      }
+
+      const left = mode.includes("w") ? startCrop.x + dx : startCrop.x;
+      const right = mode.includes("e") ? startCrop.x + startCrop.width + dx : startCrop.x + startCrop.width;
+      const top = mode.includes("n") ? startCrop.y + dy : startCrop.y;
+      const bottom = mode.includes("s") ? startCrop.y + startCrop.height + dy : startCrop.y + startCrop.height;
+
+      const nextLeft = Math.min(Math.max(0, left), right - minCropRatio);
+      const nextTop = Math.min(Math.max(0, top), bottom - minCropRatio);
+      const nextRight = Math.max(Math.min(1, right), nextLeft + minCropRatio);
+      const nextBottom = Math.max(Math.min(1, bottom), nextTop + minCropRatio);
+
+      setCropRect(
+        clampCropRect({
+          x: nextLeft,
+          y: nextTop,
+          width: nextRight - nextLeft,
+          height: nextBottom - nextTop,
+        }),
+      );
+    }
+
+    function move(pointerEvent: globalThis.PointerEvent) {
+      applyDrag(pointerEvent.clientX, pointerEvent.clientY);
+    }
+
+    function stop() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    }
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  }
+
+  function resetCrop() {
+    setCropRect(defaultCropRect);
   }
 
   function timeFromPointer(clientX: number) {
@@ -234,6 +416,9 @@ function App() {
       setClipStart(0);
       setClipEnd(defaultClipDuration);
       setCurrentTime(0);
+      setVideoNaturalWidth(0);
+      setVideoNaturalHeight(0);
+      setCropRect(defaultCropRect);
       return;
     }
 
@@ -241,6 +426,9 @@ function App() {
     setClipStart(0);
     setClipEnd(Math.min(defaultClipDuration, duration));
     setCurrentTime(0);
+    setVideoNaturalWidth(video.videoWidth);
+    setVideoNaturalHeight(video.videoHeight);
+    setCropRect(defaultCropRect);
     setDefaultGifSize(video.videoWidth, video.videoHeight);
   }
 
@@ -327,6 +515,9 @@ function App() {
     setClipEnd(defaultClipDuration);
     setCurrentTime(0);
     setIsPlaying(false);
+    setVideoNaturalWidth(0);
+    setVideoNaturalHeight(0);
+    setCropRect(defaultCropRect);
     setDefaultGifSize(16, 9);
   }
 
@@ -340,13 +531,23 @@ function App() {
       throw new Error("Select a video file first.");
     }
 
-    return renderGif({ file: selectedFile, clipStart, clipDuration, width, height, onStatus: setStatus });
+    return renderGif({
+      file: selectedFile,
+      clipStart,
+      clipDuration,
+      width,
+      height,
+      crop: cropRect,
+      sourceWidth: videoNaturalWidth,
+      sourceHeight: videoNaturalHeight,
+      onStatus: setStatus,
+    });
   }
 
   async function createGifPreview() {
     setError("");
 
-    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight });
+    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight, crop: cropRect });
     if (validationError) {
       setError(validationError);
       return;
@@ -372,7 +573,7 @@ function App() {
   async function downloadGif() {
     setError("");
 
-    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight });
+    const validationError = validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight, crop: cropRect });
     if (validationError) {
       setError(validationError);
       return;
@@ -407,39 +608,82 @@ function App() {
 
   return (
     <main className="app-shell">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">Browser GIF studio</p>
+          <h1>Clip2Gif</h1>
+        </div>
+        <a className="github-link" href="https://github.com/iamitd" target="_blank" rel="noreferrer" aria-label="Open GitHub profile">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.88c-2.78.62-3.37-1.22-3.37-1.22-.45-1.19-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.98c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9v2.8c0 .27.18.59.69.49A10.1 10.1 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+          </svg>
+        </a>
+      </header>
+
       <section className="workspace compact-workspace">
         <div className="preview-card">
           <div className="compact-title">
-            <div className="title-row">
-              <h1>Clip2Gif</h1>
-              <a className="github-link" href="https://github.com/iamitd" target="_blank" rel="noreferrer" aria-label="Open GitHub profile">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.88c-2.78.62-3.37-1.22-3.37-1.22-.45-1.19-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.98c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9v2.8c0 .27.18.59.69.49A10.1 10.1 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
-                </svg>
-              </a>
+            <div>
+              <p className="panel-kicker">Source clip</p>
+              <h2>{selectedFile ? selectedFile.name : "Drop in a short video"}</h2>
             </div>
-            <span>{clipDuration > 0 ? `${formatTime(clipStart)} - ${formatTime(clipEnd)} (${clipDuration.toFixed(1)}s)` : "Select a clip"}</span>
+            <span className="clip-pill">{clipDuration > 0 ? `${formatTime(clipStart)} - ${formatTime(clipEnd)} (${clipDuration.toFixed(1)}s)` : "Select a clip"}</span>
           </div>
 
           <div className="video-frame">
             {videoSrc ? (
-              <video
-                ref={videoRef}
-                src={videoSrc}
-                preload="metadata"
-                onLoadedMetadata={handleMetadataLoaded}
-                onTimeUpdate={handleTimeUpdate}
-                onPause={() => setIsPlaying(false)}
-                onPlay={() => setIsPlaying(true)}
-              />
+              <div className="crop-surface">
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  preload="metadata"
+                  onLoadedMetadata={handleMetadataLoaded}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPause={() => setIsPlaying(false)}
+                  onPlay={() => setIsPlaying(true)}
+                />
+                <div className="crop-overlay" aria-label="Selected crop area">
+                  <div
+                    className="crop-selection"
+                    onPointerDown={(event) => beginCropDrag("move", event)}
+                    style={{
+                      left: `${cropRect.x * 100}%`,
+                      top: `${cropRect.y * 100}%`,
+                      width: `${cropRect.width * 100}%`,
+                      height: `${cropRect.height * 100}%`,
+                    }}
+                    aria-disabled={isBusy}
+                    aria-label="Move crop area"
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="crop-rule horizontal" />
+                    <span className="crop-rule vertical" />
+                    {(["nw", "ne", "sw", "se"] as const).map((mode) => (
+                      <span
+                        key={mode}
+                        className={`crop-handle ${mode}`}
+                        role="button"
+                        tabIndex={0}
+                        onPointerDown={(event) => beginCropDrag(mode, event)}
+                        aria-label={`Resize crop area ${mode}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
             ) : (
-              <div className="empty-preview">Select a video to preview it here.</div>
+              <button className="empty-preview" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
+                <UploadIcon />
+                <strong>Select a video</strong>
+                <span>MP4, WebM, MOV, MKV, or AVI up to 250 MB</span>
+              </button>
             )}
           </div>
 
           <div className="video-controls">
             <button className="transport-button" type="button" onClick={togglePlayback} disabled={!selectedFile} aria-label={isPlaying ? "Pause" : "Play"}>
-              {isPlaying ? "Pause" : "Play"}
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
             <span className="time-readout">
               {formatTime(currentTime)} / {formatTime(videoDuration)}
@@ -448,6 +692,7 @@ function App() {
               <div className="timeline-track" />
               <div className="timeline-progress" style={{ width: `${progressPercent}%` }} />
               <div className="clip-selection" style={{ left: `${clipStartPercent}%`, width: `${clipEndPercent - clipStartPercent}%` }} />
+              <div className="playhead" style={{ left: `${progressPercent}%` }} />
               <button
                 className="range-handle start-handle"
                 type="button"
@@ -467,15 +712,47 @@ function App() {
             </div>
             <div className="clip-actions" aria-label="Clip actions">
               <button type="button" onClick={playFromClipStart} disabled={!selectedFile} title="Play from clip start" aria-label="Play from clip start">
-                ↺
+                <RestartIcon />
               </button>
               <button type="button" onClick={setStartAtCurrentTime} disabled={!selectedFile} title="Set start to current time" aria-label="Set start to current time">
-                [
+                <StartMarkerIcon />
               </button>
               <button type="button" onClick={setEndAtCurrentTime} disabled={!selectedFile} title="Set end to current time" aria-label="Set end to current time">
-                ]
+                <EndMarkerIcon />
               </button>
             </div>
+          </div>
+
+          <div className="info-grid">
+            <div className="info-tile">
+              <span>File</span>
+              <strong title={selectedFileName}>{selectedFile ? selectedFileName : "Waiting"}</strong>
+            </div>
+            <div className="info-tile">
+              <span>Size</span>
+              <strong>{fileSizeLabel}</strong>
+            </div>
+            <div className="info-tile">
+              <span>GIF canvas</span>
+              <strong>{outputSizeLabel}</strong>
+            </div>
+            <div className="info-tile">
+              <span>Crop</span>
+              <strong>{cropSizeLabel}</strong>
+            </div>
+          </div>
+
+          <div className="crop-tools">
+            <div>
+              <span>
+                <CropIcon />
+                Crop area
+              </span>
+              <strong>{cropSizeLabel}</strong>
+            </div>
+            <button className="secondary-button compact-button" type="button" onClick={resetCrop} disabled={!selectedFile || isBusy}>
+              Full frame
+            </button>
           </div>
 
           <div className="main-actions">
@@ -487,16 +764,12 @@ function App() {
               onChange={handleFileChange}
             />
             <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
+              <UploadIcon />
               Select Video
             </button>
             <button className="primary-button" type="button" onClick={createGifPreview} disabled={isBusy || !selectedFile}>
               {isCreatingPreview ? "Creating..." : "Create GIF"}
             </button>
-          </div>
-
-          <div className="selected-file">
-            <span>Selected file</span>
-            <strong title={selectedFileName}>{selectedFileName}</strong>
           </div>
 
           <div className="status-box">
@@ -517,7 +790,7 @@ function App() {
                 <p>Resize the GIF, then download the final file.</p>
               </div>
               <button type="button" className="modal-close" onClick={() => setIsPreviewOpen(false)} disabled={isDownloading} aria-label="Close preview">
-                Close
+                Done
               </button>
             </div>
 
@@ -540,6 +813,7 @@ function App() {
                 <input min={minOutputSize} max={maxOutputSize} step="1" type="number" value={gifHeight} onChange={(event) => setGifHeight(clampOutputSize(Number(event.target.value)))} />
               </label>
               <button className="primary-button" type="button" onClick={downloadGif} disabled={isDownloading}>
+                <DownloadIcon />
                 {isDownloading ? "Preparing..." : "Download GIF"}
               </button>
             </div>

@@ -11,6 +11,7 @@ Create GIFs from short video clips directly in your browser.
 - Select a local video file.
 - Preview the selected video before converting.
 - Pick a short clip with timeline controls.
+- Crop a specific area of the video frame.
 - Generate a GIF preview in the browser.
 - Resize the GIF output before download.
 - Download the final GIF.
@@ -90,7 +91,7 @@ FFmpeg core assets are served from `public/ffmpeg/`.
 
 - The first conversion can take a few seconds while FFmpeg WebAssembly loads.
 - Conversion speed depends on the browser, device, input video, clip length, and output size.
-- The MVP uses a simple `fps,scale` FFmpeg pipeline.
+- The MVP uses a focused `fps,crop,scale` FFmpeg pipeline.
 - There is no server-side fallback.
 
 ## Author

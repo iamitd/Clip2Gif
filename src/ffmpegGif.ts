@@ -13,6 +13,14 @@ export type RenderGifSettings = {
   clipDuration: number;
   width: number;
   height: number;
+  crop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  sourceWidth?: number;
+  sourceHeight?: number;
   onStatus?: (status: string) => void;
 };
 
@@ -38,11 +46,31 @@ async function loadFFmpeg(onStatus?: (status: string) => void) {
   return nextFFmpeg;
 }
 
-export async function renderGif({ file, clipStart, clipDuration, width, height, onStatus }: RenderGifSettings) {
+function cropFilter(crop: RenderGifSettings["crop"], sourceWidth = 0, sourceHeight = 0) {
+  if (!crop || sourceWidth <= 0 || sourceHeight <= 0) {
+    return "";
+  }
+
+  const cropWidth = Math.max(2, Math.min(sourceWidth, Math.round(crop.width * sourceWidth)));
+  const cropHeight = Math.max(2, Math.min(sourceHeight, Math.round(crop.height * sourceHeight)));
+  const maxX = Math.max(0, sourceWidth - cropWidth);
+  const maxY = Math.max(0, sourceHeight - cropHeight);
+  const cropX = Math.min(maxX, Math.max(0, Math.round(crop.x * sourceWidth)));
+  const cropY = Math.min(maxY, Math.max(0, Math.round(crop.y * sourceHeight)));
+
+  if (cropX === 0 && cropY === 0 && cropWidth === sourceWidth && cropHeight === sourceHeight) {
+    return "";
+  }
+
+  return `crop=${cropWidth}:${cropHeight}:${cropX}:${cropY}`;
+}
+
+export async function renderGif({ file, clipStart, clipDuration, width, height, crop, sourceWidth, sourceHeight, onStatus }: RenderGifSettings) {
   const ffmpegInstance = await loadFFmpeg(onStatus);
   const extension = fileExtension(file.name) || "mp4";
   const inputName = `input-${Date.now()}.${extension}`;
   const outputName = `clip2gif-${Date.now()}.gif`;
+  const filters = [`fps=${gifFps}`, cropFilter(crop, sourceWidth, sourceHeight), `scale=${width}:${height}:flags=lanczos`].filter(Boolean);
 
   try {
     await ffmpegInstance.writeFile(inputName, await fetchFile(file));
@@ -54,7 +82,7 @@ export async function renderGif({ file, clipStart, clipDuration, width, height, 
       "-i",
       inputName,
       "-vf",
-      `fps=${gifFps},scale=${width}:${height}:flags=lanczos`,
+      filters.join(","),
       outputName,
     ]);
 

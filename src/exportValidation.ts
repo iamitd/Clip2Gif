@@ -19,6 +19,12 @@ export type ExportSettings = {
   clipDuration: number;
   gifWidth: number;
   gifHeight: number;
+  crop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 };
 
 export function fileExtension(fileName: string) {
@@ -41,7 +47,7 @@ export function validateVideoFile(file: VideoFileLike) {
   return "";
 }
 
-export function validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight }: ExportSettings) {
+export function validateExportSettings({ selectedFile, clipStart, clipDuration, gifWidth, gifHeight, crop }: ExportSettings) {
   if (!selectedFile) {
     return "Select a video file first.";
   }
@@ -73,6 +79,21 @@ export function validateExportSettings({ selectedFile, clipStart, clipDuration, 
 
   if (gifWidth * gifHeight > maxOutputPixels) {
     return "GIF output must be 1280x720 pixels or smaller for browser conversion.";
+  }
+
+  if (crop) {
+    const cropValues = [crop.x, crop.y, crop.width, crop.height];
+    if (cropValues.some((value) => !Number.isFinite(value))) {
+      return "Crop area must use valid numeric values.";
+    }
+
+    if (crop.width <= 0 || crop.height <= 0) {
+      return "Crop area must have a width and height.";
+    }
+
+    if (crop.x < 0 || crop.y < 0 || crop.x + crop.width > 1 || crop.y + crop.height > 1) {
+      return "Crop area must stay inside the video frame.";
+    }
   }
 
   return "";
