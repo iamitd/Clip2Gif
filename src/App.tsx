@@ -620,19 +620,19 @@ function App() {
         </a>
       </header>
 
-      <section className="workspace compact-workspace">
+      <section className="workspace workspace--compact">
         <div className="preview-card">
-          <div className="compact-title">
+          <div className="preview-card__header">
             <div>
-              <p className="panel-kicker">Source clip</p>
+              <p className="preview-card__kicker">Source clip</p>
               <h2>{selectedFile ? selectedFile.name : "Drop in a short video"}</h2>
             </div>
-            <span className="clip-pill">{clipDuration > 0 ? `${formatTime(clipStart)} - ${formatTime(clipEnd)} (${clipDuration.toFixed(1)}s)` : "Select a clip"}</span>
+            <span className="preview-card__clip-pill">{clipDuration > 0 ? `${formatTime(clipStart)} - ${formatTime(clipEnd)} (${clipDuration.toFixed(1)}s)` : "Select a clip"}</span>
           </div>
 
-          <div className="video-frame">
+          <div className="preview-card__video-frame">
             {videoSrc ? (
-              <div className="crop-surface">
+              <div className="cropper">
                 <video
                   ref={videoRef}
                   src={videoSrc}
@@ -642,9 +642,9 @@ function App() {
                   onPause={() => setIsPlaying(false)}
                   onPlay={() => setIsPlaying(true)}
                 />
-                <div className="crop-overlay" aria-label="Selected crop area">
+                <div className="cropper__overlay" aria-label="Selected crop area">
                   <div
-                    className="crop-selection"
+                    className="cropper__selection"
                     onPointerDown={(event) => beginCropDrag("move", event)}
                     style={{
                       left: `${cropRect.x * 100}%`,
@@ -657,12 +657,12 @@ function App() {
                     role="button"
                     tabIndex={0}
                   >
-                    <span className="crop-rule horizontal" />
-                    <span className="crop-rule vertical" />
+                    <span className="cropper__rule cropper__rule--horizontal" />
+                    <span className="cropper__rule cropper__rule--vertical" />
                     {(["nw", "ne", "sw", "se"] as const).map((mode) => (
                       <span
                         key={mode}
-                        className={`crop-handle ${mode}`}
+                        className={`cropper__handle cropper__handle--${mode}`}
                         role="button"
                         tabIndex={0}
                         onPointerDown={(event) => beginCropDrag(mode, event)}
@@ -673,7 +673,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <button className="empty-preview" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
+              <button className="preview-card__empty" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
                 <UploadIcon />
                 <strong>Select a video</strong>
                 <span>MP4, WebM, MOV, MKV, or AVI up to 250 MB</span>
@@ -681,20 +681,20 @@ function App() {
             )}
           </div>
 
-          <div className="video-controls">
-            <button className="transport-button" type="button" onClick={togglePlayback} disabled={!selectedFile} aria-label={isPlaying ? "Pause" : "Play"}>
+          <div className="player">
+            <button className="player__transport" type="button" onClick={togglePlayback} disabled={!selectedFile} aria-label={isPlaying ? "Pause" : "Play"}>
               {isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
-            <span className="time-readout">
+            <span className="player__time">
               {formatTime(currentTime)} / {formatTime(videoDuration)}
             </span>
             <div className="timeline" ref={timelineRef} onClick={handleTimelineClick} aria-label="Video timeline and clip range selector">
-              <div className="timeline-track" />
-              <div className="timeline-progress" style={{ width: `${progressPercent}%` }} />
-              <div className="clip-selection" style={{ left: `${clipStartPercent}%`, width: `${clipEndPercent - clipStartPercent}%` }} />
-              <div className="playhead" style={{ left: `${progressPercent}%` }} />
+              <div className="timeline__track" />
+              <div className="timeline__progress" style={{ width: `${progressPercent}%` }} />
+              <div className="timeline__selection" style={{ left: `${clipStartPercent}%`, width: `${clipEndPercent - clipStartPercent}%` }} />
+              <div className="timeline__playhead" style={{ left: `${progressPercent}%` }} />
               <button
-                className="range-handle start-handle"
+                className="timeline__handle timeline__handle--start"
                 type="button"
                 style={{ left: `${clipStartPercent}%` }}
                 onPointerDown={(event) => beginHandleDrag("start", event)}
@@ -702,7 +702,7 @@ function App() {
                 disabled={!selectedFile || isBusy}
               />
               <button
-                className="range-handle end-handle"
+                className="timeline__handle timeline__handle--end"
                 type="button"
                 style={{ left: `${clipEndPercent}%` }}
                 onPointerDown={(event) => beginHandleDrag("end", event)}
@@ -710,7 +710,7 @@ function App() {
                 disabled={!selectedFile || isBusy}
               />
             </div>
-            <div className="clip-actions" aria-label="Clip actions">
+            <div className="player__actions" aria-label="Clip actions">
               <button type="button" onClick={playFromClipStart} disabled={!selectedFile} title="Play from clip start" aria-label="Play from clip start">
                 <RestartIcon />
               </button>
@@ -724,25 +724,25 @@ function App() {
           </div>
 
           <div className="info-grid">
-            <div className="info-tile">
+            <div className="info-grid__item">
               <span>File</span>
               <strong title={selectedFileName}>{selectedFile ? selectedFileName : "Waiting"}</strong>
             </div>
-            <div className="info-tile">
+            <div className="info-grid__item">
               <span>Size</span>
               <strong>{fileSizeLabel}</strong>
             </div>
-            <div className="info-tile">
+            <div className="info-grid__item">
               <span>GIF canvas</span>
               <strong>{outputSizeLabel}</strong>
             </div>
-            <div className="info-tile">
+            <div className="info-grid__item">
               <span>Crop</span>
               <strong>{cropSizeLabel}</strong>
             </div>
           </div>
 
-          <div className="crop-tools">
+          <div className="crop-panel">
             <div>
               <span>
                 <CropIcon />
@@ -750,7 +750,7 @@ function App() {
               </span>
               <strong>{cropSizeLabel}</strong>
             </div>
-            <button className="secondary-button compact-button" type="button" onClick={resetCrop} disabled={!selectedFile || isBusy}>
+            <button className="button button--secondary button--compact" type="button" onClick={resetCrop} disabled={!selectedFile || isBusy}>
               Full frame
             </button>
           </div>
@@ -758,52 +758,52 @@ function App() {
           <div className="main-actions">
             <input
               ref={fileInputRef}
-              className="file-input"
+              className="main-actions__file-input"
               type="file"
               accept="video/mp4,video/webm,video/quicktime,video/x-matroska,video/x-msvideo,.mp4,.webm,.mov,.mkv,.avi"
               onChange={handleFileChange}
             />
-            <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
+            <button className="button button--secondary" type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>
               <UploadIcon />
               Select Video
             </button>
-            <button className="primary-button" type="button" onClick={createGifPreview} disabled={isBusy || !selectedFile}>
+            <button className="button button--primary" type="button" onClick={createGifPreview} disabled={isBusy || !selectedFile}>
               {isCreatingPreview ? "Creating..." : "Create GIF"}
             </button>
           </div>
 
-          <div className="status-box">
+          <div className="status-panel">
             <span>Status</span>
             <p>{status}</p>
           </div>
 
-          {error ? <div className="error-box">{error}</div> : null}
+          {error ? <div className="error-panel">{error}</div> : null}
         </div>
       </section>
 
       {isPreviewOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="GIF preview">
+        <div className="modal" role="dialog" aria-modal="true" aria-label="GIF preview">
           <section className="gif-modal">
-            <div className="modal-title">
+            <div className="gif-modal__header">
               <div>
                 <h2>GIF Preview</h2>
                 <p>Resize the GIF, then download the final file.</p>
               </div>
-              <button type="button" className="modal-close" onClick={() => setIsPreviewOpen(false)} disabled={isDownloading} aria-label="Close preview">
+              <button type="button" className="button button--secondary" onClick={() => setIsPreviewOpen(false)} disabled={isDownloading} aria-label="Close preview">
                 Done
               </button>
             </div>
 
-            <div className="gif-preview-stage">
+            <div className="gif-modal__preview-stage">
               {gifPreviewUrl ? (
-                <div className="gif-resize-frame" style={{ width: gifWidth, height: gifHeight }}>
+                <div className="gif-modal__resize-frame" style={{ width: gifWidth, height: gifHeight }}>
                   <img src={gifPreviewUrl} alt="Generated GIF preview" />
-                  <button type="button" className="resize-handle" onPointerDown={beginGifResize} aria-label="Resize GIF preview" />
+                  <button type="button" className="gif-modal__resize-handle" onPointerDown={beginGifResize} aria-label="Resize GIF preview" />
                 </div>
               ) : null}
             </div>
 
-            <div className="modal-controls">
+            <div className="gif-modal__controls">
               <label>
                 <span>Width</span>
                 <input min={minOutputSize} max={maxOutputSize} step="1" type="number" value={gifWidth} onChange={(event) => setGifWidth(clampOutputSize(Number(event.target.value)))} />
@@ -812,7 +812,7 @@ function App() {
                 <span>Height</span>
                 <input min={minOutputSize} max={maxOutputSize} step="1" type="number" value={gifHeight} onChange={(event) => setGifHeight(clampOutputSize(Number(event.target.value)))} />
               </label>
-              <button className="primary-button" type="button" onClick={downloadGif} disabled={isDownloading}>
+              <button className="button button--primary" type="button" onClick={downloadGif} disabled={isDownloading}>
                 <DownloadIcon />
                 {isDownloading ? "Preparing..." : "Download GIF"}
               </button>
